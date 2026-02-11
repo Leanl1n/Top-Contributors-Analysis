@@ -14,7 +14,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Then open the URL shown (e.g. http://localhost:8501).
+Then open the URL
 
 ## Data
 
@@ -37,3 +37,4 @@ Top_Contributors/
     quadrant.py         # Quadrant analysis (matplotlib + Plotly)
     sankey.py           # Sankey diagram (Plotly)
 ```
+
