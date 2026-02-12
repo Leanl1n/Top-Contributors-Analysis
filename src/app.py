@@ -1,7 +1,6 @@
 """
 Streamlit UI: upload CSV or Excel (.xlsx), pick Quadrants or Sankey, run and view outputs.
 """
-import io
 import os
 import sys
 
@@ -103,16 +102,6 @@ try:
         st.markdown(writeups)
     else:
         st.caption("(No content returned)")
-
-    # Optional PNG download (after everything else so it doesn't block; can be slow)
-    try:
-        png_buf = io.BytesIO()
-        fig.write_image(png_buf, format="png", width=1200, height=600 if analysis == "Quadrants" else 800)
-        png_buf.seek(0)
-        fname = "authors_quadrant.png" if analysis == "Quadrants" else "sankey_diagram.png"
-        st.download_button("Download PNG", data=png_buf, file_name=fname, mime="image/png", key="dl_png")
-    except Exception:
-        st.caption("PNG download requires: pip install kaleido")
 
 except ValueError as e:
     progress.empty()
