@@ -11,10 +11,10 @@ if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
 
 import streamlit as st
-import pandas as pd
 
-from quadrant import build_quadrant_figure_plotly
-from sankey import build_sankey_figure
+from chart_creation import build_quadrant_figure_plotly, build_sankey_figure
+from helper import read_uploaded_file
+from writeups_generation import generate_writeups
 
 st.set_page_config(page_title="Top Contributors Analysis", layout="wide")
 st.title("Top Contributors Analysis")
@@ -39,20 +39,7 @@ if not uploaded:
     st.stop()
 
 try:
-    if uploaded.name.lower().endswith(".csv"):
-        encodings = ["utf-8", "utf-8-sig", "cp1252", "latin1"]
-        raw = uploaded.read()
-        df = None
-        for enc in encodings:
-            try:
-                df = pd.read_csv(io.BytesIO(raw), encoding=enc)
-                break
-            except Exception:
-                continue
-        if df is None:
-            df = pd.read_csv(io.BytesIO(raw))
-    else:
-        df = pd.read_excel(uploaded)
+    df = read_uploaded_file(uploaded)
 except Exception as e:
     st.error(f"Could not read file: {e}")
     st.stop()
@@ -60,36 +47,58 @@ except Exception as e:
 st.subheader("Data preview")
 st.dataframe(df.head(20), width="stretch")
 
-run = st.button("Run analysis")
+run = st.button("Run analysis", type="primary", key="run_analysis")
 if not run:
     st.stop()
 
-with st.spinner("Running analysis…"):
+# Single run: progress bar, then chart, then writeups (all in one go)
+progress = st.progress(0, text="Starting…")
+status = st.empty()
+
+try:
+    # Step 1: Build chart (no PNG export here - it can hang)
+    progress.progress(15, text="Building chart…")
+    if analysis == "Quadrants":
+        fig = build_quadrant_figure_plotly(df)
+    else:
+        fig = build_sankey_figure(df)
+
+    # Show chart right away (st.plotly_chart only; PNG export moved to end)
+    st.subheader("Quadrant plot" if analysis == "Quadrants" else "Sankey diagram")
+    st.plotly_chart(fig, width="stretch")
+
+    # Step 2: Generate writeups (uses same df from uploaded CSV)
+    progress.progress(50, text="Generating writeups…")
+    analysis_type = "quadrant" if analysis == "Quadrants" else "sankey"
+    writeups = generate_writeups(df, analysis_type=analysis_type)
+    writeups = (writeups or "").strip()
+
+    progress.progress(100, text="Done")
+    status.empty()
+    progress.empty()
+
+    st.subheader("Sample writeups")
+    if writeups:
+        st.markdown(writeups)
+    else:
+        st.caption("(No content returned)")
+
+    # Optional PNG download (after everything else so it doesn't block; can be slow)
     try:
-        if analysis == "Quadrants":
-            fig = build_quadrant_figure_plotly(df)
-            st.subheader("Quadrant plot")
-            st.plotly_chart(fig, width="stretch")
-            try:
-                png_buf = io.BytesIO()
-                fig.write_image(png_buf, format="png", width=1200, height=600)
-                png_buf.seek(0)
-                st.download_button("Download PNG", data=png_buf, file_name="authors_quadrant.png", mime="image/png", key="quadrant_png")
-            except Exception:
-                st.caption("PNG download requires the kaleido package: pip install kaleido")
-        else:
-            fig = build_sankey_figure(df)
-            st.subheader("Sankey diagram")
-            st.plotly_chart(fig, width="stretch")
-            try:
-                png_buf = io.BytesIO()
-                fig.write_image(png_buf, format="png", width=1200, height=800)
-                png_buf.seek(0)
-                st.download_button("Download PNG", data=png_buf, file_name="sankey_diagram.png", mime="image/png", key="sankey_png")
-            except Exception:
-                st.warning("PNG download requires the **kaleido** package. Install with: `pip install kaleido`")
-    except ValueError as e:
-        st.error(str(e))
-    except Exception as e:
-        st.error(f"Analysis failed: {e}")
-        raise
+        png_buf = io.BytesIO()
+        fig.write_image(png_buf, format="png", width=1200, height=600 if analysis == "Quadrants" else 800)
+        png_buf.seek(0)
+        fname = "authors_quadrant.png" if analysis == "Quadrants" else "sankey_diagram.png"
+        st.download_button("Download PNG", data=png_buf, file_name=fname, mime="image/png", key="dl_png")
+    except Exception:
+        st.caption("PNG download requires: pip install kaleido")
+
+except ValueError as e:
+    progress.empty()
+    status.empty()
+    st.error(str(e))
+except Exception as e:
+    progress.empty()
+    status.empty()
+    st.error(f"Analysis failed: {e}")
+    raise
